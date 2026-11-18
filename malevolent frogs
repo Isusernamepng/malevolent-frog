@@ -1,0 +1,2048 @@
+
+import turtle
+import random
+import math
+import json
+import os
+import time
+
+# ============================================================
+# MALEVOLENT FROGS — SWAMP DEFENSE
+# Fixed map selection and wave progression
+# ============================================================
+
+WIDTH, HEIGHT = 1100, 760
+SAVE_FILE = "malevolent_frogs_save.json"
+FRAME_MS = 25
+STARTING_COINS = 100
+SUMMON_COST = 100
+
+MAPS = [
+    {"name": "Saltwater Pyramids", "difficulty": "Easy",
+     "waves": 5, "reward": 50, "hp": 1.0, "speed": 1.0,
+     "bg": "#d7c38b", "path": "#c4a56b"},
+    {"name": "Frosted Aftermath", "difficulty": "Easy",
+     "waves": 7, "reward": 50, "hp": 1.15, "speed": .95,
+     "bg": "#b9e6f2", "path": "#edfaff"},
+    {"name": "Wogwog Fountain", "difficulty": "Medium",
+     "waves": 10, "reward": 120, "hp": 1.8, "speed": 1.0,
+     "bg": "#b8e5c4", "path": "#7cb99a"},
+    {"name": "Cons of Time", "difficulty": "Medium",
+     "waves": 9, "reward": 120, "hp": 2.0, "speed": 1.08,
+     "bg": "#b7b3d9", "path": "#8b86b8"},
+    {"name": "Volcanuim", "difficulty": "Hard",
+     "waves": 10, "reward": 250, "hp": 3.2, "speed": 1.15,
+     "bg": "#442f39", "path": "#bd543d"},
+    {"name": "Slumber Party Panic", "difficulty": "Hard",
+     "waves": 12, "reward": 250, "hp": 3.8, "speed": 1.2,
+     "bg": "#252b50", "path": "#6466a1"},
+    {"name": "Sandwich Heights", "difficulty": "Expert",
+     "waves": 12, "reward": 400, "hp": 5.2, "speed": 1.28,
+     "bg": "#d9b887", "path": "#8f6844"},
+    {"name": "The Statue of Grapefin", "difficulty": "Expert",
+     "waves": 11, "reward": 400, "hp": 5.8, "speed": 1.32,
+     "bg": "#6f668f", "path": "#b7a6d8"},
+    {"name": "Lumpy Space Road", "difficulty": "Medium",
+     "waves": 13, "reward": 120, "hp": 1.8, "speed": 1.38,
+     "bg": "#58366f", "path": "#e5a1f5"},
+    {"name": "Wizard City", "difficulty": "Hard",
+     "waves": 15, "reward": 250, "hp": 3.2, "speed": 1.42,
+     "bg": "#182c50", "path": "#55d7ed"},
+]
+
+FROGS = {
+    "Frog": {
+        "rarity": "Rare", "color": "#63c95d",
+        "range": 105, "damage": 50, "rate": .75,
+        "cost": 20, "limit": 4
+    },
+    "Tomatrog": {
+        "rarity": "Rare", "color": "#df5148",
+        "range": 115, "damage": 55, "rate": .85,
+        "cost": 20, "limit": 4
+    },
+    "Tofuwog": {
+        "rarity": "Epic", "color": "#f4e9cf",
+        "range": 135, "damage": 69, "rate": 1.0,
+        "cost": 45, "limit": 3
+    },
+    "Cyclog": {
+        "rarity": "Legendary", "color": "#68c9d8",
+        "range": 170, "damage": 70, "rate": 1.2,
+        "cost": 90, "limit": 3
+    },
+    "Stuartob": {
+        "rarity": "Legendary", "color": "#d5a86a",
+        "range": 155, "damage": 69.8, "rate": 1.15,
+        "cost": 75, "limit": 3
+    },
+    "Bublugomrog": {
+        "rarity": "Mythical", "color": "#b9a4ff",
+        "range": 190, "damage": 89, "rate": 1.35,
+        "cost": 90, "limit": 3
+    },
+    "Lemonrabrog": {
+        "rarity": "Mythical", "color": "#e8ee55",
+        "range": 180, "damage": 120, "rate": 1.25,
+        "cost": 120, "limit": 3
+    },
+    "Billy Toadsmith": {
+        "rarity": "Mythical", "color": "#f0a5cc",
+        "range": 220, "damage": 80, "rate": 1.5,
+        "cost": 69, "limit": 3
+    },
+    # Secret unit: intentionally modest damage and a strict two-unit limit.
+    "Magic Frog": {
+        "rarity": "Secret", "color": "#00ff00",
+        "range": 125, "damage": 250, "rate": 0.10,
+        "cost": 100, "limit": 2
+    },
+    # Legacy event frogs remain in the roster so existing owners can still use them. They cannot be summoned.
+    "Pumpkrog": {"rarity": "Rare", "color": "#ff8a32", "range": 120, "damage": 120, "rate": .78, "cost": 25, "limit": 4, "event": True},
+    "Shroomrog": {"rarity": "Epic", "color": "#d47bff", "range": 145, "damage": 145, "rate": 1.0, "cost": 45, "limit": 3, "event": True},
+    "Magmaribbit": {"rarity": "Legendary", "color": "#ff543b", "range": 170, "damage": 170, "rate": 1.15, "cost": 75, "limit": 3, "event": True},
+    "Moonlily Monarch": {"rarity": "Legendary", "color": "#9eafff", "range": 195, "damage": 195, "rate": .82, "cost": 85, "limit": 3, "event": True},
+    "Bog Hydra": {"rarity": "Mythical", "color": "#5be0a0", "range": 205, "damage": 210, "rate": 1.25, "cost": 110, "limit": 2, "event": True},
+    # Legacy event secret: retained for players who already unlocked it.
+    "The Last Croaker": {"rarity": "Secret", "color": "#aaaaaa", "range": 135, "damage": 423, "rate": 1.0, "cost": 100, "limit": 2, "event": True},
+    # Big Update 2: Epic frogs obtained through normal summoning.
+    "Woolog": {"rarity": "Epic", "color": "#e8e0d4", "range": 150, "damage": 210, "rate": 1.05, "cost": 48, "limit": 3},
+    "Leafrog": {"rarity": "Epic", "color": "#65bd55", "range": 160, "damage": 290, "rate": .82, "cost": 48, "limit": 3},
+    # These two Legendary frogs are awarded for the first Catastrophic victory.
+    "LumpSomr'rog": {"rarity": "Legendary", "color": "#d8a5ee", "range": 185, "damage": 200, "rate": 1.15, "cost": 95, "limit": 3, "cat_reward": True},
+    "Wiz ARts Master": {"rarity": "Legendary", "color": "#55d7ed", "range": 197, "damage": 197, "rate": 1.0, "cost": 95, "limit": 3, "cat_reward": True},
+}
+
+RARITY_COLORS = {
+    "Rare": "#63aaff",
+    "Epic": "#bb8cff",
+    "Legendary": "#ffdc66",
+    "Mythical": "#ff8bd7",
+    "Secret": "#00ff00",
+}
+
+RARITY_ODDS = [
+    ("Rare", 65.0),
+    ("Epic", 33.0),
+    ("Legendary", 1.5),
+    ("Mythical", 0.5),
+]
+
+ENEMIES = {
+    "Fih": {"hp": 10, "speed": 108, "reward": 5},
+    "Flyet": {"hp": 10, "speed": 144, "reward": 5},
+    "Squarelamander": {"hp": 180, "speed": 48, "reward": 20},
+    "Walamander": {"hp": 300, "speed": 63, "reward": 25},
+    "Grapefin": {"hp": 5373, "speed": 39, "reward": 100},
+}
+
+# ============================================================
+# WINDOW
+# ============================================================
+
+screen = turtle.Screen()
+screen.setup(WIDTH, HEIGHT)
+screen.title("MALEVOLENT FROGS — Swamp Defense")
+screen.bgcolor("#101626")
+screen.tracer(0, 0)
+
+background = turtle.Turtle(visible=False)
+background.speed(0)
+background.penup()
+
+art = turtle.Turtle(visible=False)
+art.speed(0)
+art.penup()
+
+# ============================================================
+# SAVE DATA
+# ============================================================
+
+def load_save():
+    default = {
+        "coins": 0,
+        "inventory": {"Frog": 1},
+        "equipped": ["Frog"],
+        "enemy_kills": {},
+        "catastrophic_unlocked": False,
+        "lumpy_space_reward_claimed": False,
+        "wizard_city_reward_claimed": False
+    }
+
+    if not os.path.exists(SAVE_FILE):
+        return default
+
+    try:
+        with open(SAVE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        for key, value in default.items():
+            data.setdefault(key, value)
+
+        if not isinstance(data["inventory"], dict):
+            data["inventory"] = {"Frog": 1}
+
+        if not isinstance(data["equipped"], list):
+            data["equipped"] = ["Frog"]
+        if not isinstance(data.get("enemy_kills"), dict):
+            data["enemy_kills"] = {}
+        data.setdefault("catastrophic_unlocked", False)
+        # Older saves awarded both map frogs together after a Catastrophic clear.
+        # Preserve that progress when loading those saves.
+        data.setdefault("lumpy_space_reward_claimed", bool(data.get("catastrophic_unlocked", False)))
+        data.setdefault("wizard_city_reward_claimed", bool(data.get("catastrophic_unlocked", False)))
+
+        data["equipped"] = [
+            name for name in data["equipped"] if name in FROGS
+        ][:8]
+
+        if data["inventory"].get("Frog", 0) < 1:
+            data["inventory"]["Frog"] = 1
+
+        if not data["equipped"]:
+            data["equipped"] = ["Frog"]
+
+        return data
+
+    except (OSError, ValueError, TypeError):
+        return default
+
+
+save = load_save()
+
+
+def save_game():
+    try:
+        with open(SAVE_FILE, "w", encoding="utf-8") as f:
+            json.dump(save, f, indent=2)
+    except OSError:
+        pass
+
+
+def owned(name):
+    return int(save["inventory"].get(name, 0))
+
+
+# ============================================================
+# DRAWING HELPERS
+# ============================================================
+
+def rect(t, x, y, w, h, color, outline=None):
+    t.penup()
+    t.goto(x, y)
+    t.setheading(0)
+    t.color(outline or color, color)
+    t.pendown()
+    t.begin_fill()
+
+    for _ in range(2):
+        t.forward(w)
+        t.left(90)
+        t.forward(h)
+        t.left(90)
+
+    t.end_fill()
+    t.penup()
+
+
+def text(t, x, y, value, size=12, color="#ffffff",
+         align="left"):
+    t.penup()
+    t.goto(x, y)
+    t.color(color)
+    t.write(str(value), align=align,
+            font=("Arial", size, "normal"))
+
+
+def circle(t, x, y, radius, color, outline=None):
+    t.penup()
+    t.goto(x, y-radius)
+    t.setheading(0)
+    t.color(outline or color, color)
+    t.pendown()
+    t.begin_fill()
+    t.circle(radius)
+    t.end_fill()
+    t.penup()
+
+
+def line(t, points, color, width=3):
+    t.penup()
+    t.goto(points[0])
+    t.pencolor(color)
+    t.pensize(width)
+    t.pendown()
+
+    for point in points[1:]:
+        t.goto(point)
+
+    t.penup()
+    t.pensize(1)
+
+
+BUTTONS = []
+
+
+def button(label, x, y, w, h, callback,
+           color="#334766", outline="#71849c"):
+    rect(art, x, y, w, h, color, outline)
+    text(art, x+w/2, y+h/2-5, label, 10, "white", "center")
+    BUTTONS.append((x, y, x+w, y+h, callback))
+
+
+# ============================================================
+# FROG DRAWING
+# ============================================================
+
+def draw_frog(t, x, y, scale=1.0, color="#62c85d",
+              outline="#173d32"):
+    # Body
+    t.penup()
+    t.goto(x-22*scale, y-7*scale)
+    t.color(outline, color)
+    t.pendown()
+    t.begin_fill()
+
+    for px, py in [
+        (x-24*scale, y-7*scale),
+        (x-22*scale, y-20*scale),
+        (x-12*scale, y-25*scale),
+        (x+12*scale, y-25*scale),
+        (x+22*scale, y-20*scale),
+        (x+24*scale, y-7*scale),
+        (x, y)
+    ]:
+        t.goto(px, py)
+
+    t.end_fill()
+    t.penup()
+
+    circle(t, x, y-9*scale, 17*scale, color, outline)
+
+    # Raised eyes
+    circle(t, x-12*scale, y+5*scale, 8*scale, color, outline)
+    circle(t, x+12*scale, y+5*scale, 8*scale, color, outline)
+    circle(t, x-12*scale, y+5*scale, 4.3*scale, "#fff8dc")
+    circle(t, x+12*scale, y+5*scale, 4.3*scale, "#fff8dc")
+    circle(t, x-11*scale, y+4*scale, 2.1*scale, "#18202b")
+    circle(t, x+13*scale, y+4*scale, 2.1*scale, "#18202b")
+
+    # Nostrils and smile
+    circle(t, x-7*scale, y-9*scale, 1.8*scale, outline)
+    circle(t, x+7*scale, y-9*scale, 1.8*scale, outline)
+    line(t, [
+        (x-10*scale, y-15*scale),
+        (x-5*scale, y-18*scale),
+        (x+5*scale, y-18*scale),
+        (x+10*scale, y-15*scale)
+    ], outline, max(1, int(2*scale)))
+
+    # Feet and toes
+    for dx in (-16, -8, 8, 16):
+        circle(t, x+dx*scale, y-25*scale,
+               2.6*scale, color, outline)
+
+
+def draw_tomatrog(t, x, y, scale=1.0):
+    draw_frog(t, x, y, scale, "#df5148", "#692a2b")
+    circle(t, x, y+15*scale, 5*scale, "#4b9d47")
+
+    for a in range(5):
+        angle = math.radians(a*72)
+        xx = x+math.cos(angle)*7*scale
+        yy = y+15*scale+math.sin(angle)*5*scale
+        circle(t, xx, yy, 2*scale, "#4b9d47")
+
+
+def draw_tofuwog(t, x, y, scale=1.0):
+    rect(t, x-19*scale, y-21*scale,
+         38*scale, 26*scale, "#f5e8c8", "#6b5c45")
+    draw_frog(t, x, y+5*scale, scale*.75,
+              "#e9d7aa", "#776449")
+
+
+def magic_poly(t, x, y, points, scale, color, outline=None):
+    """Draw a polygon whose points are relative to its center."""
+    t.penup()
+    t.goto(x + points[0][0]*scale, y + points[0][1]*scale)
+    t.color(outline or color, color)
+    t.pendown()
+    t.begin_fill()
+    for px, py in points[1:]:
+        t.goto(x + px*scale, y + py*scale)
+    t.goto(x + points[0][0]*scale, y + points[0][1]*scale)
+    t.end_fill()
+    t.penup()
+
+
+def magic_ellipse(t, x, y, rx, ry, color, outline=None, scale=1.0):
+    pts = [(rx*math.cos(i*math.pi/36), ry*math.sin(i*math.pi/36))
+           for i in range(73)]
+    magic_poly(t, x, y, pts, scale, color, outline)
+
+
+def draw_magic_outline(t, x, y, scale=1.0):
+    """Neon-green silhouette based on the user's second reference picture."""
+    # Coordinates trace the broad body, left-side upright, right arm,
+    # and the distinctive tall, wavy crown.
+    outline_points = [
+        (-268, 18), (-260, 29), (-246, 54), (-236, 65), (-214, 62),
+        (-193, 61), (-177, 53), (-161, 32), (-143, 17), (-120, 34),
+        (-93, 57), (-72, 78), (-48, 91), (-20, 97), (-20, 123),
+        (-30, 138), (-45, 145), (-57, 163), (-69, 181), (-55, 185),
+        (-40, 174), (-28, 170), (-26, 190), (-18, 207), (-10, 224),
+        (0, 230), (9, 216), (12, 198), (23, 184), (33, 176),
+        (43, 161), (53, 150), (44, 137), (48, 122), (61, 112),
+        (80, 105), (101, 101), (125, 96), (143, 88), (153, 74),
+        (158, 57), (175, 53), (193, 52), (213, 55), (235, 58),
+        (253, 57), (266, 50), (268, 27), (264, 7), (241, 6),
+        (216, 6), (192, 8), (174, 2), (183, -20), (193, -55),
+        (203, -94), (212, -130), (209, -151), (193, -170),
+        (171, -190), (151, -211), (128, -231), (104, -244),
+        (79, -256), (54, -267), (29, -269), (18, -257),
+        (10, -251), (2, -259), (-8, -274), (-25, -281),
+        (-43, -285), (-62, -294), (-80, -306), (-99, -314),
+        (-117, -307), (-129, -292), (-141, -277), (-151, -256),
+        (-159, -237), (-164, -216), (-167, -237), (-172, -257),
+        (-188, -274), (-205, -282), (-229, -282), (-251, -276),
+        (-264, -265), (-263, -235), (-262, -205), (-261, -175),
+        (-257, -146), (-260, -126), (-275, -118), (-289, -110),
+        (-285, -91), (-283, -68), (-288, -47), (-283, -26),
+        (-268, -12), (-268, 18)
+    ]
+    # Fit outline to a compact icon. The reference image has transparent
+    # black surroundings; only its bright-green contour is shown in summon.
+    t.penup()
+    t.goto(x + outline_points[0][0]*scale, y + outline_points[0][1]*scale)
+    t.pencolor("#00ff00")
+    t.pensize(max(2, int(4*scale)))
+    t.pendown()
+    for px, py in outline_points[1:]:
+        t.goto(x + px*scale, y + py*scale)
+    t.penup()
+    t.pensize(1)
+    # Tiny inner dot from the original outline drawing.
+    circle(t, x-120*scale, y+34*scale, max(1, 2*scale), "#00ff00")
+
+
+def draw_magic_frog(t, x, y, scale=1.0):
+    """Bright, hand-drawn-style Magic Frog inspired by the supplied picture."""
+    # Main mint-green round body.
+    magic_ellipse(t, x, y-4*scale, 181, 178, "#aaff9f", scale=scale)
+    # Yellow robe/skirt across the lower half, with a scalloped hem.
+    magic_poly(t, x, y, [
+        (-157, 25), (-123, 7), (-99, -12), (-65, -28), (-28, -39),
+        (9, -42), (47, -28), (78, -10), (105, 8), (133, 20),
+        (146, 5), (137, -48), (128, -100), (112, -145), (94, -157),
+        (75, -143), (57, -160), (39, -146), (19, -164), (1, -147),
+        (-20, -163), (-39, -145), (-58, -160), (-77, -142),
+        (-96, -157), (-112, -133), (-129, -93), (-145, -55)
+    ], scale, "#f4ff00")
+    # Top yellow oval/collar.
+    magic_ellipse(t, x, y+146*scale, 150, 27, "#f4ff00", scale=scale)
+    # Orange upright left-side piece and round top.
+    magic_poly(t, x, y, [(-174, -178), (-174, 57), (-123, 57),
+                          (-123, -178)], scale, "#ffad48")
+    magic_ellipse(t, x-148*scale, y+61*scale, 60, 63, "#ffad48", scale=scale)
+    # Long yellow arm pointing to the right.
+    magic_poly(t, x, y, [(112, 76), (188, 69), (262, 59), (269, 47),
+                          (264, 32), (245, 30), (240, 18), (218, 16),
+                          (206, 23), (177, 27), (156, 37), (136, 51)],
+               scale, "#f4ff00")
+    # The tall yellow crown/hat and its blue ribbon.
+    magic_poly(t, x, y, [(-10, 174), (-7, 204), (-2, 235), (0, 266),
+                          (7, 280), (20, 279), (32, 265), (39, 238),
+                          (44, 210), (52, 187), (48, 174)], scale, "#f4ff00")
+    magic_poly(t, x, y, [(-39, 231), (-24, 222), (-8, 209), (8, 196),
+                          (24, 190), (39, 195), (48, 207), (44, 219),
+                          (34, 213), (21, 205), (8, 204), (-4, 212),
+                          (-16, 223), (-27, 235)], scale, "#087bff")
+    magic_poly(t, x, y, [(27, 199), (42, 214), (55, 226), (62, 219),
+                          (60, 204), (49, 190), (38, 187)], scale, "#087bff")
+    # White circular marking on the mint body.
+    magic_ellipse(t, x+57*scale, y+64*scale, 28, 30, "#aaff9f",
+                  outline="#ffffff", scale=scale)
+
+
+def draw_last_croaker(t, x, y, scale=1.0, outline_only=False):
+    """Draw The Last Croaker in the game's rounded frog-art style."""
+    # Keep the familiar silhouette compact, but give it the rounded body,
+    # eye bumps, and dark outline used by the other frogs in this game.
+    body = [(-48, -19), (-46, -5), (-43, 11), (-36, 23),
+            (-29, 29), (-34, 39), (-27, 48), (-15, 51),
+            (-7, 47), (0, 44), (7, 47), (16, 51), (28, 47),
+            (34, 39), (30, 29), (38, 22), (44, 10), (47, -6),
+            (48, -20), (39, -28), (28, -29), (20, -25),
+            (8, -31), (-8, -31), (-20, -27), (-31, -30), (-41, -27)]
+    left_horn = [(-29, 37), (-38, 45), (-46, 58), (-51, 73),
+                 (-50, 84), (-43, 91), (-36, 82), (-32, 69),
+                 (-25, 59), (-19, 52)]
+    right_horn = [(23, 52), (32, 59), (39, 72), (45, 85),
+                  (52, 90), (58, 83), (55, 72), (48, 58),
+                  (39, 45), (30, 38)]
+
+    if outline_only:
+        t.penup()
+        t.pencolor("#00ff00")
+        t.pensize(max(1, int(2.2*scale)))
+        for pts in (left_horn, body, right_horn):
+            t.goto(x+pts[0][0]*scale, y+pts[0][1]*scale)
+            t.pendown()
+            for px, py in pts[1:]:
+                t.goto(x+px*scale, y+py*scale)
+            t.goto(x+pts[0][0]*scale, y+pts[0][1]*scale)
+            t.penup()
+        # Outline-only eyes hint at the secret design without revealing it.
+        for ex in (-27, 27):
+            t.goto(x+(ex-10)*scale, y+35*scale)
+            t.pendown()
+            t.goto(x+(ex+10)*scale, y+35*scale)
+            t.penup()
+        t.pensize(1)
+        return
+
+    # Red horns sit behind the raised eye/ear bumps.
+    magic_poly(t, x, y, left_horn, scale, "#c9000b", "#7e1720")
+    magic_poly(t, x, y, right_horn, scale, "#c9000b", "#7e1720")
+    for pts in [
+        [(-47, 65), (-40, 63), (-36, 67)],
+        [(-45, 74), (-38, 72), (-34, 76)],
+        [(-43, 82), (-37, 80), (-34, 83)],
+        [(42, 65), (49, 68), (52, 72)],
+        [(45, 74), (51, 77), (54, 81)],
+        [(47, 82), (52, 85), (55, 87)],
+    ]:
+        line(t, [(x+px*scale, y+py*scale) for px, py in pts],
+             "#ff3338", max(1, int(3.5*scale)))
+
+    # Rounded gray frog body with a dark outline, like the game's other frogs.
+    magic_poly(t, x, y, body, scale, "#aaaaaa", "#555b62")
+    magic_ellipse(t, x-34*scale, y-20*scale, 13, 10,
+                  "#aaaaaa", outline="#555b62", scale=scale)
+    magic_ellipse(t, x+34*scale, y-20*scale, 13, 10,
+                  "#aaaaaa", outline="#555b62", scale=scale)
+    magic_ellipse(t, x-25*scale, y-27*scale, 13, 8,
+                  "#aaaaaa", outline="#555b62", scale=scale)
+    magic_ellipse(t, x+27*scale, y-27*scale, 13, 8,
+                  "#aaaaaa", outline="#555b62", scale=scale)
+
+    # Raised golden eyes with thick, nearly black horizontal bands.
+    for ex in (-27, 27):
+        circle(t, x+ex*scale, y+34*scale, 14*scale,
+               "#f5b900", "#6b4a00")
+        rect(t, x+(ex-11)*scale, y+31*scale,
+             22*scale, 7*scale, "#171717", "#171717")
+
+    # Two small face marks from the user's drawing.
+    circle(t, x-11*scale, y+4*scale, 1.9*scale, "#555555")
+    circle(t, x+11*scale, y+4*scale, 1.9*scale, "#555555")
+
+
+def draw_unit(t, name, x, y, scale=1.0):
+    if name == "The Last Croaker":
+        # Much smaller than regular frogs, as requested, while preserving the reference proportions.
+        draw_last_croaker(t, x, y, scale * 0.58)
+        return
+    if name == "Magic Frog":
+        # Magic Frog's artwork is drawn on a larger coordinate canvas than
+        # the regular frogs, so scale it down to match their on-screen size.
+        draw_magic_frog(t, x, y, scale * 0.22)
+        return
+    info = FROGS[name]
+
+    if name == "Tomatrog":
+        draw_tomatrog(t, x, y, scale)
+    elif name == "Tofuwog":
+        draw_tofuwog(t, x, y, scale)
+    else:
+        draw_frog(t, x, y, scale, info["color"], "#242d3b")
+
+        if name == "Cyclog":
+            circle(t, x, y+16*scale, 5*scale, "#ffe65c")
+
+        elif name == "Stuartob":
+            rect(t, x-10*scale, y+12*scale,
+                 20*scale, 5*scale, "#4a3028")
+            rect(t, x-7*scale, y+17*scale,
+                 14*scale, 7*scale, "#4a3028")
+
+        elif name == "Bublugomrog":
+            for dx, dy in [(-24, 8), (24, 8), (0, 25)]:
+                circle(t, x+dx*scale, y+dy*scale,
+                       4*scale, "#e7e2ff")
+
+        elif name == "Lemonrabrog":
+            circle(t, x-11*scale, y+16*scale,
+                   3*scale, "#f4f1b3")
+            circle(t, x+11*scale, y+16*scale,
+                   3*scale, "#f4f1b3")
+
+        elif name == "Billy Toadsmith":
+            rect(t, x-10*scale, y+12*scale,
+                 20*scale, 5*scale, "#71442d")
+            rect(t, x-7*scale, y+17*scale,
+                 14*scale, 7*scale, "#71442d")
+
+        elif name == "Woolog":
+            # Fluffy wool cap and soft curls.
+            for dx, dy in [(-15, 19), (-7, 24), (2, 25), (11, 22), (17, 15)]:
+                circle(t, x+dx*scale, y+dy*scale, 6*scale, "#fff4df", "#9c8f7d")
+
+        elif name == "Leafrog":
+            # A leafy crest with visible veins.
+            magic_poly(t, x, y, [(-3, 18), (-17, 35), (-4, 31),
+                                  (2, 44), (7, 30), (20, 34), (7, 17)],
+                       scale, "#a6e66b", "#326d39")
+            line(t, [(x+2*scale,y+18*scale),(x+3*scale,y+37*scale)], "#326d39", 2)
+
+        elif name == "LumpSomr'rog":
+            # Lumpy-space crown-like bumps.
+            for dx, dy, rr in [(-16,20,5),(-5,27,7),(8,25,6),(18,17,4)]:
+                circle(t, x+dx*scale, y+dy*scale, rr*scale, "#f3c6ff", "#714a8d")
+
+        elif name == "Wiz ARts Master":
+            # Wizard hat and a bright star.
+            magic_poly(t, x, y, [(-17,17),(0,46),(17,17)], scale, "#263e78", "#a6eaff")
+            circle(t, x, y+29*scale, 3.2*scale, "#ffe56b")
+
+
+def draw_magic_minion(minion):
+    """Small allied minion summoned by Magic Frog onto the track."""
+    x, y = minion["x"], minion["y"]
+    circle(art, x, y, 8, "#8dff72", "#176a32")
+    circle(art, x-3, y+2, 1.8, "#ffffff")
+    circle(art, x+3, y+2, 1.8, "#ffffff")
+    circle(art, x-3, y+2, .8, "#13251a")
+    circle(art, x+3, y+2, .8, "#13251a")
+    # Tiny health bar makes its level-based durability visible.
+    width = 20
+    fraction = max(0, min(1, minion["hp"] / minion["maxhp"]))
+    rect(art, x-width/2, y+11, width, 3, "#45242a")
+    if fraction > 0:
+        rect(art, x-width/2, y+11, width*fraction, 3, "#73ed77")
+
+
+# ============================================================
+# ENEMY DRAWING
+# ============================================================
+
+def draw_grapefin(t, x, y, size=24):
+    # Purple sunfish body, yellow fins and tail.
+    line(t, [
+        (x-5, y+size*.65),
+        (x+2, y+size*1.55),
+        (x+10, y+size*.65)
+    ], "#ffdf35", 6)
+
+    line(t, [
+        (x+size*.65, y),
+        (x+size*1.45, y+size*.4),
+        (x+size*1.45, y-size*.4),
+        (x+size*.65, y)
+    ], "#ffdf35", 5)
+
+    circle(t, x, y, size, "#8f54bd", "#4a286a")
+    circle(t, x-8, y+7, 3, "#ffffff")
+    circle(t, x-7, y+7, 1.5, "#161522")
+
+    line(t, [
+        (x-12, y-4), (x-4, y-6), (x+1, y-3)
+    ], "#3a1e4b", 2)
+
+
+def draw_enemy(enemy):
+    x, y = enemy["x"], enemy["y"]
+    kind = enemy["kind"]
+
+    if kind == "Grapefin":
+        draw_grapefin(art, x, y, 24)
+
+    elif kind in ("Skelewags", "Ghostlings", "Timmberbound Nightmare", "Chasm Leeches", "Captain of Wogwog"):
+        colors = {"Skelewags": "#ded6c8", "Ghostlings": "#9beaff", "Timmberbound Nightmare": "#6b4c37", "Chasm Leeches": "#7cdb85", "Captain of Wogwog": "#e54d57"}
+        radius = 23 if kind == "Captain of Wogwog" else (16 if kind in ("Timmberbound Nightmare", "Chasm Leeches") else 10)
+        circle(art, x, y, radius, colors[kind], "#251a2c")
+        circle(art, x-4, y+3, 3, "#fff4d6")
+        circle(art, x-3, y+3, 1.5, "#21162a")
+        if kind == "Captain of Wogwog":
+            line(art, [(x-14,y+radius),(x,y+radius+12),(x+14,y+radius)], "#ffcf55", 4)
+
+    elif kind == "Squarelamander":
+        rect(art, x-17, y-17, 34, 34,
+             "#76c94c", "#315c2a")
+
+        for offset in (-12, -4, 4, 12):
+            line(art, [
+                (x+offset-3, y+16),
+                (x+offset, y+23),
+                (x+offset+3, y+16)
+            ], "#c6ef73", 3)
+
+        circle(art, x+6, y+5, 4, "#ffffff")
+        circle(art, x+7, y+5, 2, "#172117")
+        line(art, [(x-5, y-5), (x+5, y-7)],
+             "#315c2a", 2)
+
+    elif kind == "Walamander":
+        circle(art, x, y, 13, "#e98e3b", "#6b3c28")
+        circle(art, x-5, y+4, 3, "#ffffff")
+        circle(art, x-4, y+4, 1.5, "#202020")
+        line(art, [
+            (x+5, y+9), (x+14, y+16), (x+9, y+5)
+        ], "#ffbd56", 3)
+        line(art, [
+            (x-5, y+9), (x-12, y+16), (x-10, y+5)
+        ], "#ffbd56", 3)
+
+    elif kind == "Flyet":
+        circle(art, x, y, 8, "#c6e9ff", "#436b9b")
+        line(art, [
+            (x-4, y+3), (x-15, y+12), (x-8, y+1)
+        ], "#ffffff", 3)
+        line(art, [
+            (x+4, y+3), (x+15, y+12), (x+8, y+1)
+        ], "#ffffff", 3)
+        circle(art, x-2, y+2, 1.7, "#16213e")
+
+    else:
+        circle(art, x, y, 9, "#7bd3e5", "#225c6d")
+        circle(art, x-3, y+2, 2, "#ffffff")
+        circle(art, x-2, y+2, 1, "#132536")
+        line(art, [
+            (x+5, y), (x+12, y+5),
+            (x+12, y-5), (x+5, y)
+        ], "#4aa4b7", 2)
+
+    # Health bar
+    bar_width = 58 if kind in ("Grapefin", "Captain of Wogwog") else 29
+    fraction = max(0, enemy["hp"]/enemy["maxhp"])
+
+    rect(art, x-bar_width/2, y+27,
+         bar_width, 4, "#4a1d2a")
+
+    if fraction > 0:
+        rect(art, x-bar_width/2, y+27,
+             bar_width*fraction, 4, "#73ed77")
+
+    if kind == "Grapefin":
+        text(art, x, y+38, "GRAPEFIN", 8, "#ffdf35", "center")
+    elif kind == "Captain of Wogwog":
+        text(art, x, y+38, "CAPTAIN OF WOGWOG", 7, "#ff9b48", "center")
+
+
+# ============================================================
+# MAP
+# ============================================================
+
+PATH = [
+    (-510, 210), (-360, 210), (-360, 80),
+    (-210, 80), (-210, 220), (-55, 220),
+    (-55, 45), (100, 45), (100, -150),
+    (275, -150), (275, -260)
+]
+
+page = "home"
+game = None
+map_index = 0
+summon_message = ""
+
+
+def draw_static_map(index):
+    background.clear()
+    cfg = MAPS[index]
+
+    rect(background, -550, -380, 1100, 760, cfg["bg"])
+
+    random.seed(index+17)
+    for _ in range(42):
+        x = random.randint(-530, 520)
+        y = random.randint(-340, 330)
+        circle(background, x, y, random.randint(1, 4), "#ffffff")
+
+    line(background, PATH, cfg["path"], 48)
+    line(background, PATH,
+         "#e7d8b4" if cfg["difficulty"] != "Hard" else "#e8a06c", 3)
+
+    for point in PATH[1:-1]:
+        circle(background, point[0], point[1], 5, "#fff1c7")
+
+    if index == 0:
+        for x, y in [(-465, -40), (-285, -230), (130, 245)]:
+            line(background, [
+                (x-25, y-25), (x, y+25),
+                (x+25, y-25), (x-25, y-25)
+            ], "#b78e4f", 4)
+
+    elif index == 1:
+        for x, y in [(-465, -70), (-260, 260), (170, 240)]:
+            circle(background, x, y, 15, "#f3ffff")
+            line(background, [(x, y+18), (x, y-20)],
+                 "#75b8d1", 3)
+
+    elif index == 2:
+        circle(background, -430, -120, 25, "#4c9ed2")
+        circle(background, -430, -120, 15, "#a6edfa")
+
+    elif index == 3:
+        circle(background, -430, -120, 25, "#4b426f")
+        text(background, -430, -125, "TIME", 7,
+             "#f8e7a4", "center")
+
+    elif index == 4:
+        for x, y in [(-460, -100), (-15, 275), (220, 210)]:
+            circle(background, x, y, 20, "#fa653d")
+            circle(background, x, y, 10, "#ffca53")
+
+    elif index == 5:
+        for x, y in [(-460, -100), (-5, 275), (210, 205)]:
+            circle(background, x, y, 13, "#d4d8ff")
+            circle(background, x+5, y+7, 3, "#fff3a8")
+
+    elif index == 6:
+        # Sandwich-shaped hills and golden crumbs.
+        for x, y in [(-440, 100), (-170, -180), (250, 220), (420, -170)]:
+            line(background, [(x-34, y-22), (x, y+30),
+                              (x+34, y-22), (x-34, y-22)], "#8b5a35", 5)
+            line(background, [(x-27, y-13), (x, y+20),
+                              (x+27, y-13)], "#e7d79a", 5)
+
+    # Extra landmark art to make these three maps feel distinct and memorable.
+    if index == 3:
+        # CONS OF TIME: giant clock faces, gear rings, and glowing time rifts.
+        for cx, cy, r in [(-455, 185, 34), (410, 235, 42), (420, -235, 28)]:
+            circle(background, cx, cy, r+7, "#514c82", "#d7c7ff")
+            circle(background, cx, cy, r, "#24264d", "#9d8ee8")
+            for a in range(12):
+                ang = math.radians(a*30)
+                x1, y1 = cx+math.sin(ang)*(r-7), cy+math.cos(ang)*(r-7)
+                x2, y2 = cx+math.sin(ang)*(r-13), cy+math.cos(ang)*(r-13)
+                line(background, [(x1, y1), (x2, y2)], "#e7d8ff", 2)
+            line(background, [(cx, cy), (cx+r*.42, cy+r*.30)], "#ffe68a", 3)
+            line(background, [(cx, cy), (cx-r*.12, cy+r*.60)], "#ffe68a", 3)
+            circle(background, cx, cy, 3, "#fff4b5")
+        # Hourglass symbols and temporal cracks.
+        for x, y in [(-455, -180), (-10, 285), (445, 20)]:
+            line(background, [(x-15,y+22),(x+15,y+22),(x-10,y-18),
+                              (x+10,y-18),(x-15,y+22)], "#c9b7ff", 3)
+            line(background, [(x-10,y+12),(x+10,y-9)], "#ffd86f", 3)
+            line(background, [(x+12,y+5),(x-12,y-8)], "#ffd86f", 2)
+        for x, y in [(-300, 290), (180, 285), (465, -100)]:
+            line(background, [(x-12,y+18),(x+2,y+2),(x-7,y-8),
+                              (x+14,y-24)], "#fff0a6", 3)
+        text(background, 365, 180, "TIME RIFT", 9, "#fff0a6", "center")
+
+    elif index == 6:
+        # SANDWICH HEIGHTS: stacked sandwich mesas with lettuce, cheese,
+        # tomato, and sesame seeds, plus little crumb trails.
+        sandwich_spots = [(-455, -85, 1.0), (-270, 285, .72),
+                          (430, 245, .9), (430, -245, .72), (-10, -290, .7)]
+        for x, y, scale in sandwich_spots:
+            w, h = 48*scale, 28*scale
+            line(background, [(x-w,y-h*.35),(x,y+h),(x+w,y-h*.35),
+                              (x-w,y-h*.35)], "#8d4d28", 5)
+            line(background, [(x-w*.90,y-h*.25),(x,y+h*.72),
+                              (x+w*.90,y-h*.25)], "#f5d77b", 7)
+            line(background, [(x-w*.88,y-h*.12),(x,y+h*.55),
+                              (x+w*.88,y-h*.12)], "#69ad50", 4)
+            line(background, [(x-w*.83,y-h*.18),(x,y+h*.38),
+                              (x+w*.83,y-h*.18)], "#db5149", 4)
+            line(background, [(x-w,y-h*.40),(x+w,y-h*.40)], "#a85e2c", 5)
+            for sx, sy in [(-12,5), (2,12), (13,4)]:
+                circle(background, x+sx*scale, y+sy*scale, 1.8*scale, "#fff0b0")
+        # Floating crumbs and tiny flags make the skyline playful.
+        for x, y in [(-490, 20), (-325, -290), (95, 300), (350, 80), (490, -40)]:
+            circle(background, x, y, 3, "#f6df9b")
+            circle(background, x+9, y+6, 2, "#e8b96d")
+        line(background, [(355, 120), (355, 160)], "#8d4d28", 3)
+        line(background, [(355, 158), (382, 150), (355, 142)], "#e65b48", 3)
+        text(background, 395, 115, "TOP TOAST", 8, "#fff0b0", "center")
+
+    elif index == 7:
+        # THE STATUE OF GRAPEFIN: place the landmark on the upper-right
+        # island, completely away from the enemy path and tower placement lane.
+        # Plinth
+        rect(background, 295, 28, 108, 18, "#5b4b72", "#d5b8ff")
+        rect(background, 305, 46, 88, 13, "#88739e", "#e8d9ff")
+        # Statue body and fins
+        circle(background, 348, 115, 35, "#743fa0", "#e3c6ff")
+        line(background, [(323, 126), (293, 155), (302, 112), (318, 100)],
+             "#8b55b7", 7)
+        line(background, [(369, 128), (399, 157), (391, 111), (374, 99)],
+             "#8b55b7", 7)
+        line(background, [(348, 87), (328, 63), (355, 71), (371, 60), (366, 89)],
+             "#a66bd0", 6)
+        # Tail, crest, eye, and carved scales
+        line(background, [(379, 112), (408, 132), (404, 99), (379, 112)],
+             "#a66bd0", 6)
+        line(background, [(330, 142), (334, 163), (343, 146), (352, 165),
+                          (358, 143)], "#d5b8ff", 4)
+        circle(background, 361, 124, 7, "#ffdf55", "#fff4b2")
+        circle(background, 363, 124, 2.5, "#2a183c")
+        for sx, sy in [(339,114),(348,108),(356,103),(339,102)]:
+            circle(background, sx, sy, 2, "#d5b8ff")
+        # Glowing ceremonial rays and rune stones
+        for x, y in [(-420, 180), (390, 190), (420, -185), (-430, -210)]:
+            line(background, [(x,y-20),(x,y+20)], "#d6aaff", 3)
+            line(background, [(x-13,y),(x+13,y)], "#d6aaff", 3)
+            line(background, [(x-8,y-8),(x+8,y+8)], "#ffdf55", 2)
+            line(background, [(x-8,y+8),(x+8,y-8)], "#ffdf55", 2)
+        for x, y in [(-320, 260), (250, 285), (-310, -275), (300, -285)]:
+            line(background, [(x-10,y-13),(x-10,y+13),(x+10,y+13),
+                              (x+10,y-13),(x-10,y-13)], "#9e83c6", 3)
+            text(background, x, y-5, "✦", 12, "#ffdf55", "center")
+        text(background, 348, 5, "THE ANCIENT GRAPEFIN", 9,
+             "#ffdf55", "center")
+
+    elif index == 8:
+        # Lumpy Space Road: floating lavender boulders and candy-colored portals.
+        for x, y, r in [(-455,175,32),(-420,-205,25),(420,225,38),(430,-225,30),(80,285,20)]:
+            circle(background, x, y, r, "#a66bd1", "#f2c6ff")
+            circle(background, x-r*.25, y+r*.25, r*.22, "#e9baff")
+        for x,y in [(-300,285),(-80,-290),(280,285),(475,25)]:
+            circle(background,x,y,13,"#f6b8ef","#fff0ff")
+            circle(background,x,y,5,"#fff4a8")
+        text(background, 365, 180, "LUMPY SPACE", 10, "#ffe2ff", "center")
+
+    elif index == 9:
+        # Wizard City: towers, magical windows, stars and floating runes.
+        for x,y,h in [(-455,150,85),(-410,-210,65),(420,190,105),(455,-190,75),(80,285,55)]:
+            rect(background,x-20,y-35,40,h,"#273e70","#7ddff4")
+            line(background,[(x-27,y+h-35),(x,y+h),(x+27,y+h-35)],"#4e6ea8",5)
+            for wy in range(int(y-15),int(y+h-30),24):
+                rect(background,x-5,wy,10,13,"#ffe58a")
+        for x,y in [(-300,280),(-250,-280),(0,300),(280,-280),(470,30)]:
+            line(background,[(x,y+12),(x+4,y+3),(x+13,y),(x+4,y-3),(x,y-12),(x-4,y-3),(x-13,y),(x-4,y+3),(x,y+12)],"#ffe77b",2)
+        text(background, 365, 180, "WIZARD CITY", 10, "#a8f2ff", "center")
+
+    circle(background, PATH[0][0], PATH[0][1], 11, "#6cff9c")
+    circle(background, PATH[-1][0], PATH[-1][1], 12, "#ff647d")
+
+    text(background, -510, 275, "SPAWN", 9, "#193b2b")
+    text(background, 275, -285, "EXIT", 9, "#4a1825")
+    text(background, -520, 335, cfg["name"], 16, "#263d2b")
+    text(background, -520, 312,
+         f'{cfg["difficulty"]} - {cfg["waves"]} waves',
+         10, "#263d2b")
+
+
+# ============================================================
+# MATCH SETUP
+# ============================================================
+
+def start_match(index):
+    global page, game, map_index, last_tick
+
+    # The selected map index is used directly, not a fixed map.
+    map_index = max(0, min(index, len(MAPS)-1))
+    cfg = MAPS[map_index]
+    page = "match"
+
+    game = {
+        "map": cfg,
+        "map_index": map_index,
+        "coins": STARTING_COINS,
+        "coins_gained": 0,
+        "lives": 20,
+        "wave": 0,
+        "enemies": [],
+        "minions": [],
+        "towers": [],
+        "spawn_left": 0,
+        "wave_spawn_total": 0,
+        "spawn_timer": 0,
+        "prep": 1.5,
+        "paused": False,
+        "won": False,
+        "lost": False,
+        "placing": None,
+        "selected_tower": None,
+        "kills": 0,
+        "notice": f'Entering {cfg["name"]}!',
+        "notice_until": time.monotonic()+3,
+        "wave_complete": False,
+        "end_bonus_awarded": False,
+    }
+
+    draw_static_map(map_index)
+    render_match()
+
+
+def distance(a, b):
+    return math.hypot(a[0]-b[0], a[1]-b[1])
+
+
+def point_on_path(x, y):
+    for a, b in zip(PATH, PATH[1:]):
+        dx = b[0]-a[0]
+        dy = b[1]-a[1]
+        length_sq = dx*dx+dy*dy
+
+        if length_sq == 0:
+            continue
+
+        q = max(0, min(
+            1, ((x-a[0])*dx+(y-a[1])*dy)/length_sq
+        ))
+
+        px = a[0]+q*dx
+        py = a[1]+q*dy
+
+        if math.hypot(x-px, y-py) < 43:
+            return True
+
+    return False
+
+
+# ============================================================
+# TOWERS
+# ============================================================
+
+def place_tower(x, y):
+    if not game or game["won"] or game["lost"]:
+        return
+
+    name = game["placing"]
+    if not name:
+        return
+
+    info = FROGS[name]
+    count = sum(t["name"] == name for t in game["towers"])
+
+    if count >= info["limit"]:
+        game["notice"] = f'{name} limit: {info["limit"]}.'
+        game["notice_until"] = time.monotonic()+2.5
+        game["placing"] = None
+        return
+
+    # Each frog uses its own listed placement cost.
+    place_cost = info["cost"]
+    if game["coins"] < place_cost:
+        game["notice"] = f'Need {place_cost} match coins to place a frog.'
+        game["notice_until"] = time.monotonic()+2.5
+        game["placing"] = None
+        return
+
+    if point_on_path(x, y):
+        game["notice"] = "You cannot place a frog on the path."
+        game["notice_until"] = time.monotonic()+2
+        return
+
+    if x < -535 or x > 535 or y < -320 or y > 300:
+        return
+
+    if any(distance((x, y), (t["x"], t["y"])) < 43
+           for t in game["towers"]):
+        game["notice"] = "Too close to another frog."
+        game["notice_until"] = time.monotonic()+2
+        return
+
+    game["coins"] -= place_cost
+
+    game["towers"].append({
+        "name": name,
+        "x": x,
+        "y": y,
+        "level": 1,
+        "cooldown": .1,
+        "summon_cooldown": 2.0,
+        "kills": 0,
+    })
+
+    game["selected_tower"] = len(game["towers"])-1
+    game["placing"] = None
+    game["notice"] = f'Placed {name} for {place_cost} match coins.'
+    game["notice_until"] = time.monotonic()+2.5
+
+
+def select_placing(name):
+    if not game or game["won"] or game["lost"]:
+        return
+
+    game["placing"] = name
+    game["selected_tower"] = None
+    game["notice"] = f"Click an open area to place {name}."
+    game["notice_until"] = time.monotonic()+3
+
+
+def sell_selected():
+    """Sell the selected frog for 75% of its listed frog cost."""
+    if not game or game["won"] or game["lost"]:
+        return
+
+    index = game["selected_tower"]
+    if index is None or index < 0 or index >= len(game["towers"]):
+        game["notice"] = "Click a frog first to sell it."
+        game["notice_until"] = time.monotonic()+2.5
+        return
+
+    tower = game["towers"].pop(index)
+    frog_cost = FROGS[tower["name"]]["cost"]
+    refund = int(frog_cost * 0.75)
+    game["coins"] += refund
+    game["coins_gained"] += refund
+    game["selected_tower"] = None
+    game["placing"] = None
+    game["notice"] = f'Sold {tower["name"]} for {refund} match coins (75%).'
+    game["notice_until"] = time.monotonic()+3
+
+
+def upgrade_selected():
+    if not game:
+        return
+
+    index = game["selected_tower"]
+
+    if index is None or index >= len(game["towers"]):
+        return
+
+    tower = game["towers"][index]
+    cost = 60*tower["level"]
+
+    if tower["level"] >= 5:
+        game["notice"] = "This frog is already max level."
+    elif game["coins"] < cost:
+        game["notice"] = f"Upgrade costs {cost} coins."
+    else:
+        game["coins"] -= cost
+        tower["level"] += 1
+        game["notice"] = f'{tower["name"]} upgraded to Lv.{tower["level"]}!'
+
+    game["notice_until"] = time.monotonic()+2.5
+
+
+def award_match_end_bonus():
+    """Award the 50 match-coin completion bonus exactly once per match."""
+    if game and not game.get("end_bonus_awarded", False):
+        game["coins"] += 50
+        game["coins_gained"] += 50
+        game["end_bonus_awarded"] = True
+
+
+# ============================================================
+# WAVE SYSTEM — FIXED
+# ============================================================
+
+def start_wave(number):
+    """Starts exactly the requested wave."""
+    if not game or number > game["map"]["waves"]:
+        return
+
+    game["wave"] = number
+
+    # Big Update 2: noticeably larger enemy waves on every map.
+    count = 8 + number*3
+
+    if game["map"]["difficulty"] == "Medium":
+        count += 3
+    elif game["map"]["difficulty"] == "Hard":
+        count += 6
+    elif game["map"]["difficulty"] == "Expert":
+        count += 10 + number
+
+    game["spawn_left"] = count
+    game["wave_spawn_total"] = count
+    game["spawn_timer"] = .25
+    game["prep"] = 0
+    game["wave_complete"] = False
+    game["notice"] = f'WAVE {number} / {game["map"]["waves"]}!'
+    game["notice_until"] = time.monotonic()+2.5
+
+
+def spawn_enemy():
+    cfg = game["map"]
+    wave = game["wave"]
+
+    # The first enemy of the last two waves is always Grapefin.
+    first_spawn = game["spawn_left"] == game["wave_spawn_total"]
+    boss_wave = wave >= cfg["waves"]-1
+
+    if boss_wave and first_spawn:
+        kind = "Grapefin"
+    elif wave >= 4 and random.random() < .25:
+        kind = "Walamander"
+    elif wave >= 2 and random.random() < .22:
+        kind = "Squarelamander"
+    else:
+        kind = random.choice(["Fih", "Flyet"])
+
+    info = ENEMIES[kind]
+    hp_scale = cfg["hp"]*(1+(wave-1)*.12)
+    if cfg["difficulty"] == "Expert":
+        hp_scale *= 1.15
+    hp = info["hp"]*hp_scale
+
+    game["enemies"].append({
+        "kind": kind,
+        "x": PATH[0][0],
+        "y": PATH[0][1],
+        "segment": 0,
+        "hp": hp,
+        "maxhp": hp,
+        "speed": info["speed"]*cfg["speed"]*(1+(wave-1)*.02),
+        "reward": info["reward"],
+    })
+
+
+def move_enemy(enemy, dt):
+    remaining = enemy["speed"]*dt
+
+    while remaining > 0 and enemy["segment"] < len(PATH)-1:
+        target = PATH[enemy["segment"]+1]
+        dx = target[0]-enemy["x"]
+        dy = target[1]-enemy["y"]
+        dist = math.hypot(dx, dy)
+
+        if dist < .001:
+            enemy["segment"] += 1
+            continue
+
+        if remaining >= dist:
+            enemy["x"], enemy["y"] = target
+            enemy["segment"] += 1
+            remaining -= dist
+        else:
+            enemy["x"] += dx/dist*remaining
+            enemy["y"] += dy/dist*remaining
+            remaining = 0
+
+    if enemy["segment"] >= len(PATH)-1:
+        game["lives"] -= 1
+        return False
+
+    return True
+
+
+def record_enemy_kill(kind):
+    """Persist first-discovery and total kill count for the enemy index."""
+    kills = save.setdefault("enemy_kills", {})
+    kills[kind] = int(kills.get(kind, 0)) + 1
+    save_game()
+
+
+def move_minion(minion, dt):
+    """Move a summoned ally along the path and let it skirmish with enemies."""
+    # Minions advance along the track, stopping near enemies to attack them.
+    minion["attack_cooldown"] = max(0, minion["attack_cooldown"] - dt)
+    nearby = [e for e in game["enemies"]
+              if distance((minion["x"], minion["y"]), (e["x"], e["y"])) < 24]
+    if nearby:
+        target = nearby[0]
+        if minion["attack_cooldown"] <= 0:
+            target["hp"] -= minion["damage"]
+            minion["attack_cooldown"] = 1.0
+            if target["hp"] <= 0 and target in game["enemies"]:
+                game["enemies"].remove(target)
+                game["coins"] += target["reward"]
+                game["coins_gained"] += target["reward"]
+                game["kills"] += 1
+                record_enemy_kill(target["kind"])
+        return True
+
+    remaining = minion["speed"] * dt
+    while remaining > 0 and minion["segment"] < len(PATH)-1:
+        target = PATH[minion["segment"]+1]
+        dx, dy = target[0]-minion["x"], target[1]-minion["y"]
+        dist = math.hypot(dx, dy)
+        if dist < .001:
+            minion["segment"] += 1
+            continue
+        if remaining >= dist:
+            minion["x"], minion["y"] = target
+            minion["segment"] += 1
+            remaining -= dist
+        else:
+            minion["x"] += dx/dist*remaining
+            minion["y"] += dy/dist*remaining
+            remaining = 0
+    # Minions disappear after reaching the end of the track.
+    return minion["segment"] < len(PATH)-1
+
+
+def update_game(dt):
+    if game["paused"] or game["won"] or game["lost"]:
+        return
+
+    # During preparation, count down to the next wave.
+    if game["prep"] > 0:
+        game["prep"] -= dt
+
+        if game["prep"] <= 0:
+            # IMPORTANT: advance to the next wave.
+            next_wave = game["wave"]+1
+
+            if next_wave <= game["map"]["waves"]:
+                start_wave(next_wave)
+
+        return
+
+    # Spawn remaining enemies in the current wave.
+    if game["spawn_left"] > 0:
+        game["spawn_timer"] -= dt
+
+        if game["spawn_timer"] <= 0:
+            spawn_enemy()
+            game["spawn_left"] -= 1
+            game["spawn_timer"] = max(.18, .66-game["wave"]*.025)
+
+    # Move enemies smoothly.
+    survivors = []
+
+    for enemy in game["enemies"]:
+        if move_enemy(enemy, dt):
+            survivors.append(enemy)
+
+    game["enemies"] = survivors
+
+    # Move allied minions along the track.
+    active_minions = []
+    for minion in game["minions"]:
+        if move_minion(minion, dt):
+            active_minions.append(minion)
+    game["minions"] = active_minions
+
+    # Magic Frog periodically summons a small ally onto the track.
+    # Higher tower levels increase minion HP and damage, not the summon rate.
+    for tower in game["towers"]:
+        if tower["name"] != "Magic Frog":
+            continue
+        tower["summon_cooldown"] = tower.get("summon_cooldown", 2.0) - dt
+        owned_minions = sum(m["owner"] == id(tower) for m in game["minions"])
+        if tower["summon_cooldown"] <= 0 and owned_minions < 3:
+            level = tower["level"]
+            minion_hp = 25 + (level-1)*15
+            game["minions"].append({
+                "x": PATH[0][0], "y": PATH[0][1], "segment": 0,
+                "hp": minion_hp, "maxhp": minion_hp,
+                "speed": 42, "damage": 5 + (level-1)*2,
+                "attack_cooldown": 0.0, "owner": id(tower)
+            })
+            tower["summon_cooldown"] = 8.0
+            game["notice"] = f'Magic Frog summoned a minion! Lv.{level} minion HP: {minion_hp}'
+            game["notice_until"] = time.monotonic()+2.0
+
+    # Tower attacks.
+    for tower in game["towers"]:
+        info = FROGS[tower["name"]]
+        tower["cooldown"] -= dt
+
+        if tower["cooldown"] > 0:
+            continue
+
+        level = tower["level"]
+        radius = info["range"]+(level-1)*8
+        damage = info["damage"]*(1+(level-1)*.65)
+
+        targets = [
+            enemy for enemy in game["enemies"]
+            if distance((tower["x"], tower["y"]),
+                        (enemy["x"], enemy["y"])) <= radius
+        ]
+
+        if not targets:
+            continue
+
+        target = max(targets, key=lambda enemy: enemy["segment"])
+        target["hp"] -= damage
+        tower["cooldown"] = info["rate"]/(1+(level-1)*.1)
+
+        if target["hp"] <= 0:
+            game["coins"] += target["reward"]
+            game["coins_gained"] += target["reward"]
+            game["kills"] += 1
+            tower["kills"] += 1
+            record_enemy_kill(target["kind"])
+
+            game["notice"] = (
+                f'{target["kind"]} defeated! '
+                f'+{target["reward"]} match coins'
+            )
+            game["notice_until"] = time.monotonic()+1.5
+
+            if target in game["enemies"]:
+                game["enemies"].remove(target)
+
+    # Defeat check.
+    if game["lives"] <= 0:
+        game["lost"] = True
+        game["notice"] = "The swamp has been overrun!"
+        return
+
+    # WAVE PROGRESSION FIX:
+    # Advance only after all enemies have spawned AND the field is empty.
+    wave_finished = (
+        game["spawn_left"] == 0 and
+        len(game["enemies"]) == 0
+    )
+
+    if wave_finished and not game["wave_complete"]:
+        game["wave_complete"] = True
+
+        # Every cleared wave awards match coins. Retired event currencies are
+        # no longer earned; previously collected event frogs remain usable.
+        game["coins"] += 50
+        game["coins_gained"] += 50
+
+        if game["wave"] >= game["map"]["waves"]:
+            game["won"] = True
+            save["coins"] += game["map"]["reward"]
+            # The two formerly-Catastrophic maps are now ordinary Medium/Hard
+            # maps, but each still grants its own Legendary frog on first victory.
+            map_name = game["map"]["name"]
+            if map_name == "Lumpy Space Road" and not save.get("lumpy_space_reward_claimed", False):
+                reward_frog = "LumpSomr'rog"
+                save["inventory"][reward_frog] = owned(reward_frog) + 1
+                save["lumpy_space_reward_claimed"] = True
+                game["cat_reward_message"] = "LUMPSOMR'ROG UNLOCKED!"
+            elif map_name == "Wizard City" and not save.get("wizard_city_reward_claimed", False):
+                reward_frog = "Wiz ARts Master"
+                save["inventory"][reward_frog] = owned(reward_frog) + 1
+                save["wizard_city_reward_claimed"] = True
+                game["cat_reward_message"] = "WIZ ARTS MASTER UNLOCKED!"
+            if save.get("lumpy_space_reward_claimed") and save.get("wizard_city_reward_claimed"):
+                save["catastrophic_unlocked"] = True
+            game["notice"] = f'VICTORY! +{game["map"]["reward"]} saved coins!'
+            save_game()
+        else:
+            game["notice"] = f'Wave {game["wave"]} cleared! +50 match coins!'
+            game["notice_until"] = time.monotonic()+2.5
+            game["prep"] = 2.0
+
+
+# ============================================================
+# SWAMP MENU BACKGROUND ART
+# ============================================================
+
+def draw_swamp_menu():
+    """Paint a swamp scene behind the menus using Turtle shapes."""
+    art.clear()
+    BUTTONS.clear()
+    # Deep marsh base with layered pools.
+    rect(art, -550, -380, 1100, 760, "#102b25", "#102b25")
+    rect(art, -550, -380, 1100, 190, "#173b30", "#173b30")
+    for x, y, r, color in [
+        (-455, 235, 105, "#245448"), (420, 230, 115, "#204b42"),
+        (-445, -235, 120, "#1d5145"), (440, -215, 135, "#24584a"),
+        (-210, 325, 60, "#1a4538"), (220, -330, 75, "#1b473a"),
+        (0, -355, 95, "#1c493d")]:
+        circle(art, x, y, r, color, "#2e6551")
+    # Muddy ripples in the water.
+    for x, y in [(-480, 205), (-425, 235), (410, 245), (455, 210),
+                 (-455, -230), (-405, -255), (430, -210), (470, -245),
+                 (-190, 325), (220, -325), (25, -350)]:
+        line(art, [(x-19, y), (x-7, y+3), (x+7, y+3), (x+19, y)], "#4b8870", 2)
+    # Lily pads and little flowers around the edges.
+    for x, y, r in [(-470, 90, 20), (-365, -280, 24), (455, 85, 22),
+                    (365, -300, 25), (-255, 315, 18), (285, 305, 21),
+                    (505, -65, 17), (-510, -110, 18)]:
+        circle(art, x, y, r, "#4f9a54", "#183f2d")
+        line(art, [(x, y), (x+r*.65, y+r*.65)], "#a4c96a", 2)
+        if r >= 21:
+            circle(art, x+5, y+5, 4, "#f3e9a0")
+    # Reeds/cattails framing the scene, kept mostly at the sides.
+    for x, base_y, h in [(-525, -310, 105), (-495, -300, 145),
+                         (-465, -315, 85), (505, -305, 130),
+                         (475, -315, 95), (525, -290, 155),
+                         (-520, 270, 75), (520, 260, 85)]:
+        line(art, [(x, base_y), (x-5, base_y+h)], "#497b45", 4)
+        line(art, [(x-4, base_y+h*.55), (x-27, base_y+h*.72)], "#5a914d", 3)
+        line(art, [(x-4, base_y+h*.4), (x+18, base_y+h*.58)], "#5a914d", 3)
+        circle(art, x-5, base_y+h, 5, "#745638", "#392f22")
+    # Crooked swamp logs near the bottom corners.
+    line(art, [(-430, -330), (-365, -315), (-315, -330)], "#654a32", 12)
+    line(art, [(330, -330), (395, -312), (455, -328)], "#654a32", 12)
+    # Fireflies add a magical swamp atmosphere.
+    for x, y in [(-330, 225), (-280, 265), (340, 180), (300, -150),
+                 (-300, -135), (465, 5), (-475, 15), (180, 250), (80, -270)]:
+        circle(art, x, y, 3, "#d9f58a")
+        circle(art, x, y, 6, "#6e9c4c")
+    # Keep the swamp artwork continuous behind the menu text; no central panel.
+
+
+# ============================================================
+# HOME AND MAP MENUS
+# ============================================================
+
+def draw_home():
+    global page, BUTTONS
+
+    page = "home"
+    art.clear()
+    background.clear()
+    BUTTONS = []
+
+    draw_swamp_menu()
+    text(art, 0, 275, "MALEVOLENT FROGS",
+         30, "#8df2a0", "center")
+    text(art, 0, 235, "SWAMP DEFENSE",
+         16, "#d2e5df", "center")
+    text(art, 0, 195, f'Saved Coins: {save["coins"]}',
+         15, "#ffdf62", "center")
+
+    button("PLAY MAPS", -160, 115, 320, 45,
+           draw_maps, "#286b53")
+    button("SUMMON FROGS - 100 COINS", -160, 55, 320, 45,
+           draw_summon, "#5b438c")
+    button("BACKPACK / EQUIP", -160, -5, 320, 45,
+           draw_backpack, "#365b85")
+    button("FROG & ENEMY INDEX", -160, -65, 320, 45,
+           draw_index, "#247c8a")
+    text(art, 0, -112, "Your equipped frog squad",
+         13, "white", "center")
+
+    for i, name in enumerate(save["equipped"][:8]):
+        x = -340+(i%4)*225
+        y = -172-(i//4)*82
+        draw_unit(art, name, x, y, .65)
+        text(art, x, y-38, name, 9, "white", "center")
+
+    screen.update()
+
+
+def draw_maps():
+    global page, BUTTONS
+
+    page = "maps"
+    art.clear()
+    background.clear()
+    BUTTONS = []
+
+    draw_swamp_menu()
+    text(art, 0, 310, "SELECT A MAP",
+         26, "#8df2a0", "center")
+    text(art, 0, 278, "Every match starts with 100 coins.",
+         12, "#ffdf62", "center")
+
+    colors = {
+        "Easy": "#286b53",
+        "Medium": "#936a2f",
+        "Hard": "#8d393e",
+        "Expert": "#b14bd1",
+    }
+
+    # Three-column layout. Keep each map's original MAPS index so its
+    # background, rewards, and unlock logic remain unchanged, while placing
+    # the requested map pairs beside one another in the selection screen.
+    display_order = [0, 1, 2, 3, 8, 4, 5, 9, 6, 7]
+    for slot, i in enumerate(display_order):
+        cfg = MAPS[i]
+        col = slot % 3
+        row = slot // 3
+        x = -535+col*360
+        y = 190-row*125
+
+        rect(art, x, y-52, 330, 105,
+             "#1c2b3d", colors[cfg["difficulty"]])
+
+        text(art, x+10, y+20, cfg["name"], 11, "white")
+        text(art, x+10, y-3,
+             f'{cfg["difficulty"]} - {cfg["waves"]} waves',
+             9, "#cdd7e2")
+        text(art, x+10, y-25,
+             f'Reward: {cfg["reward"]} saved coins',
+             9, "#ffdf62")
+        chance = {"Easy": 30, "Medium": 50, "Hard": 70, "Expert": 90}[cfg["difficulty"]]
+        if cfg["name"] == "Lumpy Space Road":
+            text(art, x+10, y-43, "FIRST CLEAR: LUMPSOMR'ROG", 7, "#ffb5e1")
+        elif cfg["name"] == "Wizard City":
+            text(art, x+10, y-43, "FIRST CLEAR: WIZ ARTS MASTER", 7, "#ffb5e1")
+        else:
+            text(art, x+10, y-43, f'Bug Milk chance: {chance}%', 8, "#a8f2ff")
+
+        # Each button passes its own map index.
+        button(
+            "PLAY",
+            x+230, y-38, 85, 30,
+            lambda idx=i: start_match(idx),
+            colors[cfg["difficulty"]]
+        )
+
+    button("HOME", -90, -310, 180, 40,
+           draw_home, "#334766")
+    screen.update()
+
+
+# ============================================================
+# BIG UPDATE 2 — FROG & ENEMY INDEX
+# ============================================================
+
+index_tab = "frogs"
+
+
+def draw_index(tab=None):
+    global page, BUTTONS, index_tab
+    if tab in ("frogs", "enemies"):
+        index_tab = tab
+    page = "index"
+    art.clear(); background.clear(); BUTTONS = []
+    draw_swamp_menu()
+    text(art, 0, 315, "THE SWAMP ARCHIVES", 25, "#a8f2ff", "center")
+    text(art, 0, 286, "Discover every frog. Defeat every enemy.", 11, "#d7e8ef", "center")
+    button("FROG INDEX", -245, 235, 210, 35, lambda: draw_index("frogs"), "#654b91" if index_tab == "frogs" else "#29394d")
+    button("ENEMY INDEX", 35, 235, 210, 35, lambda: draw_index("enemies"), "#247c8a" if index_tab == "enemies" else "#29394d")
+
+    if index_tab == "frogs":
+        entries = list(FROGS.items())
+        text(art, 0, 205, f'Collected: {sum(1 for n, _ in entries if owned(n)>0)} / {len(entries)}', 10, "#b9f5c3", "center")
+        for i, (name, info) in enumerate(entries):
+            col, row = i % 4, i // 4
+            x, y = -535 + col*270, 160 - row*78
+            got = owned(name) > 0
+            rect(art, x, y-66, 250, 76, "#17263a" if got else "#171b25", RARITY_COLORS[info["rarity"]] if got else "#424854")
+            if got:
+                draw_unit(art, name, x+32, y-27, .40)
+                text(art, x+67, y-5, name, 8, RARITY_COLORS[info["rarity"]])
+                text(art, x+67, y-23, f'{info["rarity"]} | Owned: {owned(name)}', 7, "#dce6f0")
+                text(art, x+67, y-40, f'DMG {info["damage"]} | Range {info["range"]}', 7, "#ffffff")
+                text(art, x+67, y-55, f'Rate {info["rate"]:.2f}s | Cost {info["cost"]}', 7, "#b9d9ec")
+            else:
+                circle(art, x+32, y-31, 18, "#30343d", "#555b66")
+                text(art, x+32, y-37, "?", 19, "#777e89", "center")
+                text(art, x+67, y-5, "UNKNOWN FROG", 8, "#737b88")
+                text(art, x+67, y-26, "Not collected", 7, "#666e79")
+                text(art, x+67, y-44, "Stats hidden", 7, "#555d68")
+    else:
+        entries = list(ENEMIES.items())
+        discovered = sum(1 for n, _ in entries if int(save.get("enemy_kills", {}).get(n, 0)) > 0)
+        text(art, 0, 205, f'Defeated: {discovered} / {len(entries)}', 10, "#b9f5c3", "center")
+        for i, (name, info) in enumerate(entries):
+            col, row = i % 4, i // 4
+            x, y = -535 + col*270, 160 - row*78
+            kills = int(save.get("enemy_kills", {}).get(name, 0))
+            got = kills > 0
+            rect(art, x, y-66, 250, 76, "#17263a" if got else "#171b25", "#b85a64" if got else "#424854")
+            if got:
+                dummy = {"kind": name, "x": x+32, "y": y-31, "hp": info["hp"], "maxhp": info["hp"]}
+                draw_enemy(dummy)
+                text(art, x+67, y-5, name, 8, "#ffcf9a")
+                text(art, x+67, y-23, f'Base HP: {info["hp"]}', 7, "#ffffff")
+                text(art, x+67, y-40, f'Speed: {info["speed"]} | Reward: {info["reward"]}', 7, "#b9d9ec")
+                text(art, x+67, y-55, f'Defeated: {kills}', 7, "#b9f5c3")
+            else:
+                circle(art, x+32, y-31, 18, "#30343d", "#555b66")
+                text(art, x+32, y-37, "?", 19, "#777e89", "center")
+                text(art, x+67, y-5, "UNKNOWN ENEMY", 8, "#737b88")
+                text(art, x+67, y-26, "Not defeated", 7, "#666e79")
+                text(art, x+67, y-44, "Stats hidden", 7, "#555d68")
+
+    button("HOME", -90, -330, 180, 38, draw_home, "#334766")
+    screen.update()
+
+
+# ============================================================
+# SUMMONS
+# ============================================================
+
+def start_summon():
+    global summon_message
+
+    if save["coins"] < SUMMON_COST:
+        summon_message = "Not enough saved coins!"
+        draw_summon()
+        return
+
+    save["coins"] -= SUMMON_COST
+
+    # Secret chance is exactly 0.001% (1 in 100,000) per summon.
+    if random.random() < 0.00001:
+        name = "Magic Frog"
+        save["inventory"][name] = owned(name)+1
+        summon_message = "SECRET FOUND! You summoned Magic Frog!"
+        save_game()
+        draw_summon()
+        return
+
+    roll = random.random()*100
+    total = 0
+    rarity = "Mythical"
+
+    for r, odds in RARITY_ODDS:
+        total += odds
+
+        if roll < total:
+            rarity = r
+            break
+
+    choices = [
+        name for name, info in FROGS.items()
+        if info["rarity"] == rarity and not info.get("event", False)
+        and not info.get("cat_reward", False)
+    ]
+
+    name = random.choice(choices)
+    save["inventory"][name] = owned(name)+1
+
+    summon_message = f"{rarity}! You summoned {name}!"
+    save_game()
+    draw_summon()
+
+
+def draw_summon():
+    global page, BUTTONS
+
+    page = "summon"
+    art.clear()
+    background.clear()
+    BUTTONS = []
+
+    draw_swamp_menu()
+    text(art, 0, 290, "FROG SUMMONS",
+         26, "#d4b0ff", "center")
+    text(art, 0, 252, f'Saved Coins: {save["coins"]}',
+         14, "#ffdf62", "center")
+
+    button("SUMMON ONE - 100 COINS",
+           -170, 180, 340, 45,
+           start_summon, "#5b438c")
+
+    if summon_message:
+        text(art, 0, 140, summon_message,
+             13, "#a5ffb5", "center")
+
+    text(art, 0, 100,
+         "Rare 65% | Epic 33% | Legendary 1.5% | Mythical 0.5%",
+         10, "white", "center")
+
+    y = 50
+
+    for name, info in FROGS.items():
+        if name == "Magic Frog" or info.get("event", False) or info.get("cat_reward", False):
+            continue
+        draw_unit(art, name, -250, y+2, .5)
+        text(art, -210, y,
+             f'{name} - {info["rarity"]}',
+             10, RARITY_COLORS[info["rarity"]])
+        text(art, 170, y, f'Owned: {owned(name)}',
+             10, "white")
+        y -= 30
+
+    # Secret summon preview: outline only, with mystery label.
+    draw_magic_outline(art, -245, -244, .10)
+    text(art, -145, -237, "SECRET UNIT-???", 13, "#00ff00")
+    text(art, 170, -237, "???", 10, "#00ff00")
+
+    button("HOME", -90, -320, 180, 40,
+           draw_home, "#334766")
+    screen.update()
+
+
+# ============================================================
+# BACKPACK
+# ============================================================
+
+def toggle_equip(name):
+    if name in save["equipped"]:
+        save["equipped"].remove(name)
+    elif len(save["equipped"]) < 8 and owned(name) > save["equipped"].count(name):
+        save["equipped"].append(name)
+
+    if not save["equipped"]:
+        save["equipped"] = ["Frog"]
+
+    save_game()
+    draw_backpack()
+
+
+def draw_backpack():
+    global page, BUTTONS
+
+    page = "backpack"
+    art.clear()
+    background.clear()
+    BUTTONS = []
+
+    draw_swamp_menu()
+    text(art, 0, 310, "BACKPACK / EQUIP",
+         25, "#8df2a0", "center")
+    text(art, 0, 278, "Equip up to eight frogs.",
+         11, "#d2dce5", "center")
+
+    y = 220
+
+    for name, info in FROGS.items():
+        if owned(name) <= 0:
+            continue
+
+        rect(art, -420, y-25, 840, 47,
+             "#1c2b3d", RARITY_COLORS[info["rarity"]])
+        draw_unit(art, name, -385, y, .45)
+
+        text(art, -355, y+1,
+             f'{name} - {info["rarity"]} - Owned: {owned(name)}',
+             10, RARITY_COLORS[info["rarity"]])
+
+        is_equipped = name in save["equipped"]
+
+        button(
+            "UNEQUIP" if is_equipped else "EQUIP",
+            280, y-18, 115, 30,
+            lambda n=name: toggle_equip(n),
+            "#8d393e" if is_equipped else "#286b53"
+        )
+
+        y -= 54
+
+    button("HOME", -90, -320, 180, 40,
+           draw_home, "#334766")
+    screen.update()
+
+
+# ============================================================
+# MATCH DISPLAY
+# ============================================================
+
+def toggle_pause():
+    if game and not game["won"] and not game["lost"]:
+        game["paused"] = not game["paused"]
+
+
+def render_match():
+    global BUTTONS
+
+    if not game:
+        return
+
+    art.clear()
+    BUTTONS = []
+
+    # Draw towers. A tower's range is shown only when selected.
+    for i, tower in enumerate(game["towers"]):
+        info = FROGS[tower["name"]]
+
+        if game["selected_tower"] == i:
+            radius = info["range"]+(tower["level"]-1)*8
+            art.penup()
+            art.goto(tower["x"], tower["y"]-radius)
+            art.pencolor("#7be4a0")
+            art.pensize(2)
+            art.pendown()
+            art.circle(radius)
+            art.penup()
+            art.pensize(1)
+
+        draw_unit(art, tower["name"],
+                  tower["x"], tower["y"]+7, .65)
+
+        if tower["name"] == "Magic Frog":
+            text(art, tower["x"], tower["y"]-38, "SUMMONER", 7, "#00ff00", "center")
+
+        if tower["level"] > 1:
+            text(art, tower["x"], tower["y"]-28,
+                 f'Lv.{tower["level"]}', 8,
+                 "#ffdf62", "center")
+
+    for minion in game.get("minions", []):
+        draw_magic_minion(minion)
+
+    for enemy in game["enemies"]:
+        draw_enemy(enemy)
+
+    # Top HUD
+    rect(art, -550, 350, 1100, 30, "#101827")
+    text(art, -520, 359, f'Coins: {game["coins"]}',
+         11, "#ffdf62")
+    text(art, -390, 359, f'Lives: {game["lives"]}',
+         11, "#ff7b7b")
+    text(art, -270, 359,
+         f'Wave: {game["wave"]}/{game["map"]["waves"]}',
+         11, "white")
+    text(art, -60, 359,
+         f'Coins earned: +{game["coins_gained"]}',
+         11, "#8df2a0")
+    button("PAUSE" if not game["paused"] else "RESUME",
+           325, 351, 85, 27, toggle_pause, "#334766")
+    button("HOME", 425, 351, 85, 27,
+           draw_home, "#8d393e")
+
+    # Bottom tower bar
+    rect(art, -550, -380, 1100, 55, "#101827")
+    text(art, -530, -347, "PLACE FROGS",
+         9, "#b6c9d9")
+
+    for i, name in enumerate(save["equipped"][:8]):
+        x = -400+i*112
+        info = FROGS[name]
+        selected = game["placing"] == name
+
+        rect(art, x, -373, 104, 43,
+             "#496d5b" if selected else "#24364a",
+             info["color"])
+
+        draw_unit(art, name, x+14, -350, .32)
+        text(art, x+27, -348, name[:11], 8, "white")
+        text(art, x+27, -364,
+             f'Cost {info["cost"]}', 8, "#ffdf62")
+
+        BUTTONS.append((
+            x, -373, x+104, -330,
+            lambda n=name: select_placing(n)
+        ))
+
+    # Selected tower upgrade
+    idx = game["selected_tower"]
+
+    if idx is not None and idx < len(game["towers"]):
+        tower = game["towers"][idx]
+        cost = 60*tower["level"]
+
+        text(art, 180, -295,
+             f'{tower["name"]} Lv.{tower["level"]}',
+             10, FROGS[tower["name"]]["color"])
+
+        button(f"UPGRADE ({cost})",
+               345, -330, 150, 30,
+               upgrade_selected, "#5b438c")
+        sell_refund = int(FROGS[tower["name"]]["cost"] * 0.75)
+        button(f"SELL (+{sell_refund})",
+               345, -365, 150, 28,
+               sell_selected, "#a84a43")
+
+    if game["placing"]:
+        text(art, 0, -295,
+             f'Click an open area to place {game["placing"]}.',
+             10, "#a5ffb5", "center")
+
+    if time.monotonic() < game["notice_until"]:
+        text(art, 0, 324, game["notice"],
+             10, "#fff2a6", "center")
+
+    if game["paused"] and not game["won"] and not game["lost"]:
+        rect(art, -180, -40, 360, 100,
+             "#182536", "#c9d5e3")
+        text(art, 0, 12, "PAUSED",
+             25, "#ffdf62", "center")
+        text(art, 0, -18, "Press SPACE or RESUME",
+             11, "white", "center")
+
+    if game["won"] or game["lost"]:
+        rect(art, -250, -110, 500, 300,
+             "#172437", "#a9c4d8")
+
+        if game["won"]:
+            text(art, 0, 160, "VICTORY!",
+                 29, "#8df2a0", "center")
+            text(art, 0, 130,
+                 f'You earned {game["map"]["reward"]} saved coins!',
+                 12, "#ffdf62", "center")
+            if game.get("cat_reward_message"):
+                text(art, 0, 105, game["cat_reward_message"], 10, "#ff9be2", "center")
+        else:
+            text(art, 0, 160, "DEFEAT",
+                 29, "#ff7b7b", "center")
+            text(art, 0, 130,
+                 "The enemies reached the exit.",
+                 12, "white", "center")
+
+        text(art, 0, 93,
+             f'Match coins earned: {game["coins_gained"]}',
+             12, "#8df2a0", "center")
+        text(art, 0, 68,
+             f'Waves reached: {game["wave"]}',
+             11, "white", "center")
+
+        button("GO TO HOME", -170, 5, 155, 42,
+               draw_home, "#286b53")
+        button("MAP SELECT", 15, 5, 155, 42,
+               draw_maps, "#365b85")
+
+    screen.update()
+
+
+# ============================================================
+# CLICK AND KEYBOARD CONTROLS
+# ============================================================
+
+def click(x, y):
+    if page == "match" and game:
+        # Buttons are checked first, including end-screen buttons.
+        for x1, y1, x2, y2, callback in reversed(BUTTONS):
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                callback()
+
+                if page == "match":
+                    render_match()
+                return
+
+        if game["won"] or game["lost"]:
+            return
+
+        if game["placing"]:
+            place_tower(x, y)
+            render_match()
+            return
+
+        clicked = None
+
+        for i, tower in enumerate(game["towers"]):
+            if distance((x, y), (tower["x"], tower["y"])) < 27:
+                clicked = i
+                break
+
+        # Click the selected tower again to hide its range.
+        if clicked is not None:
+            if game["selected_tower"] == clicked:
+                game["selected_tower"] = None
+            else:
+                game["selected_tower"] = clicked
+        else:
+            game["selected_tower"] = None
+
+        render_match()
+        return
+
+    for x1, y1, x2, y2, callback in reversed(BUTTONS):
+        if x1 <= x <= x2 and y1 <= y <= y2:
+            callback()
+            return
+
+
+def key_space():
+    if page == "match" and game:
+        toggle_pause()
+        render_match()
+
+
+def select_equipped_by_key(index):
+    if page == "match" and game and index < len(save["equipped"]):
+        select_placing(save["equipped"][index])
+        render_match()
+
+
+screen.onclick(click)
+screen.onkey(key_space, "space")
+
+for i in range(8):
+    screen.onkey(
+        lambda idx=i: select_equipped_by_key(idx),
+        str(i+1)
+    )
+
+screen.listen()
+
+
+# ============================================================
+# ONE ANIMATION LOOP
+# ============================================================
+
+last_tick = time.monotonic()
+
+
+def app_tick():
+    global last_tick
+
+    now = time.monotonic()
+    dt = min(.04, max(0, now-last_tick))
+    last_tick = now
+
+    if page == "match" and game:
+        if not game["won"] and not game["lost"]:
+            update_game(dt)
+
+        render_match()
+
+    # Schedule exactly one next update.
+    screen.ontimer(app_tick, FRAME_MS)
+
+
+# Start on the home menu.
+draw_home()
+screen.ontimer(app_tick, FRAME_MS)
+screen.mainloop()
